@@ -8,19 +8,19 @@
     <application>
         <service 
             android:enabled="true"
-            android:exported="true"
+            android:exported="false"
             android:name=".BackgroundService"
             />
 
         <receiver 
             android:name=".WatchdogReceiver"
             android:enabled="true"
-            android:exported="true"
+            android:exported="false"
             />
 
         <receiver android:name=".BootReceiver"
             android:enabled="true"
-            android:exported="true">
+            android:exported="false">
 
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
