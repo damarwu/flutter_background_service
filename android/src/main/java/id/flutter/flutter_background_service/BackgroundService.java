@@ -1,7 +1,5 @@
 package id.flutter.flutter_background_service;
 
-import static android.os.Build.VERSION.SDK_INT;
-
 import android.app.AlarmManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -14,167 +12,82 @@ import android.os.Build;
 import android.os.IBinder;
 import android.util.Log;
 
-import androidx.annotation.NonNull;
 import androidx.core.app.AlarmManagerCompat;
 import androidx.core.app.NotificationCompat;
-import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.lang.UnsatisfiedLinkError;
 
-import io.flutter.FlutterInjector;
-import io.flutter.app.FlutterApplication;
 import io.flutter.embedding.engine.FlutterEngine;
+import io.flutter.embedding.engine.FlutterJNI;
 import io.flutter.embedding.engine.dart.DartExecutor;
-import io.flutter.embedding.engine.loader.FlutterLoader;
-import io.flutter.plugin.common.JSONMethodCodec;
-import io.flutter.plugin.common.MethodCall;
-import io.flutter.plugin.common.MethodChannel;
 import io.flutter.view.FlutterCallbackInformation;
 import io.flutter.view.FlutterMain;
 
-public class BackgroundService extends Service implements MethodChannel.MethodCallHandler {
+public class BackgroundService extends Service {
     private static final String TAG = "BackgroundService";
-    private FlutterEngine backgroundEngine;
-    private MethodChannel methodChannel;
-    private DartExecutor.DartCallback dartCallback;
-    private boolean isManuallyStopped = false;
-
-    String notificationTitle = "Background Service";
-    String notificationContent = "Running";
 
     @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
 
-    public static void enqueue(Context context) {
+    public static void enqueue(Context context){
         Intent intent = new Intent(context, WatchdogReceiver.class);
         AlarmManager manager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S){
-            PendingIntent pIntent = PendingIntent.getBroadcast(context, 111, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_MUTABLE);
-            AlarmManagerCompat.setAndAllowWhileIdle(manager, AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 5000, pIntent);
-            return;
-        }
-
-        PendingIntent pIntent = PendingIntent.getBroadcast(context, 111, intent,  PendingIntent.FLAG_UPDATE_CURRENT);
+        PendingIntent pIntent = PendingIntent.getBroadcast(context, 111, intent, PendingIntent.FLAG_UPDATE_CURRENT);
         AlarmManagerCompat.setAndAllowWhileIdle(manager, AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + 5000, pIntent);
     }
 
-    public static void setCallbackDispatcher(Context context, long callbackHandleId, boolean isForeground, boolean autoStartOnBoot) {
+    public static void setCallbackDispatcher(Context context, long callbackHandleId){
         SharedPreferences pref = context.getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
-        pref.edit()
-                .putLong("callback_handle", callbackHandleId)
-                .putBoolean("is_foreground", isForeground)
-                .putBoolean("auto_start_on_boot", autoStartOnBoot)
-                .apply();
-    }
-
-    public void setAutoStartOnBootMode(boolean value) {
-        SharedPreferences pref = getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
-        pref.edit().putBoolean("auto_start_on_boot", value).apply();
-    }
-
-    public static boolean isAutoStartOnBootMode(Context context) {
-        SharedPreferences pref = context.getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
-        return pref.getBoolean("auto_start_on_boot", true);
-    }
-
-    public void setForegroundServiceMode(boolean value) {
-        SharedPreferences pref = getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
-        pref.edit().putBoolean("is_foreground", value).apply();
-    }
-
-    public static boolean isForegroundService(Context context) {
-        SharedPreferences pref = context.getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
-        return pref.getBoolean("is_foreground", true);
-    }
-
-    public void setManuallyStopped(boolean value) {
-        SharedPreferences pref = getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
-        pref.edit().putBoolean("is_manually_stopped", value).apply();
-    }
-
-    public static boolean isManuallyStopped(Context context) {
-        SharedPreferences pref = context.getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
-        return pref.getBoolean("is_manually_stopped", false);
+        pref.edit().putLong("callback_handle", callbackHandleId).apply();
     }
 
     @Override
     public void onCreate() {
         super.onCreate();
         createNotificationChannel();
-        notificationContent = "Preparing";
-        updateNotificationInfo();
-    }
-
-    @Override
-    public void onDestroy() {
-        if (!isManuallyStopped) {
-            enqueue(this);
-        } else {
-            setManuallyStopped(true);
-        }
-        stopForeground(true);
-        isRunning.set(false);
-
-        if (backgroundEngine != null) {
-            backgroundEngine.getServiceControlSurface().detachFromService();
-            backgroundEngine.destroy();
-            backgroundEngine = null;
-        }
-
-        methodChannel = null;
-        dartCallback = null;
-        super.onDestroy();
     }
 
     private void createNotificationChannel() {
-        if (SDK_INT >= Build.VERSION_CODES.O) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             CharSequence name = "Background Service";
             String description = "Executing process in background";
 
             int importance = NotificationManager.IMPORTANCE_LOW;
-            NotificationChannel channel = new NotificationChannel("FOREGROUND_DEFAULT", name, importance);
+            NotificationChannel channel = new NotificationChannel("DEFAULT", name, importance);
             channel.setDescription(description);
-
+            channel.setShowBadge(false);
             NotificationManager notificationManager = getSystemService(NotificationManager.class);
             notificationManager.createNotificationChannel(channel);
         }
     }
 
-    protected void updateNotificationInfo() {
-        if (isForegroundService(this)) {
+    protected void setForegroundText(String content) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent intent = new Intent();
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            intent.setPackage(getApplicationContext().getPackageName());
 
-            String packageName = getApplicationContext().getPackageName();
-            Intent i = getPackageManager().getLaunchIntentForPackage(packageName);
+            PendingIntent pendingIntent = PendingIntent.getActivity(this, 999, intent, PendingIntent.FLAG_UPDATE_CURRENT);
+            NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(this, "DEFAULT");
+            mBuilder.setContentTitle("Service");
+            mBuilder.setContentText(content);
+            mBuilder.setAutoCancel(true);
+            mBuilder.setContentIntent(pendingIntent);
+            mBuilder.setSmallIcon(R.mipmap.ic_launcher);
+            mBuilder.setPriority(NotificationManager.IMPORTANCE_LOW);
 
-            PendingIntent pi;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S){
-                pi = PendingIntent.getActivity(BackgroundService.this, 99778, i, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_MUTABLE);
-            } else {
-                pi = PendingIntent.getActivity(BackgroundService.this, 99778, i, PendingIntent.FLAG_CANCEL_CURRENT);
-            }
-
-            NotificationCompat.Builder mBuilder = new NotificationCompat.Builder(this, "FOREGROUND_DEFAULT")
-                    .setSmallIcon(R.drawable.ic_bg_service_small)
-                    .setAutoCancel(true)
-                    .setOngoing(true)
-                    .setContentTitle(notificationTitle)
-                    .setContentText(notificationContent)
-                    .setContentIntent(pi);
-
-            startForeground(99778, mBuilder.build());
+            startForeground(1, mBuilder.build());
         }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        setManuallyStopped(false);
         enqueue(this);
         runService();
 
@@ -182,119 +95,24 @@ public class BackgroundService extends Service implements MethodChannel.MethodCa
     }
 
     AtomicBoolean isRunning = new AtomicBoolean(false);
+    private void runService(){
+        if (isRunning.get()) return;
 
-    private void runService() {
-        try {
-            Log.d(TAG, "runService");
-            if (isRunning.get() || (backgroundEngine != null && !backgroundEngine.getDartExecutor().isExecutingDart()))
-                return;
-            updateNotificationInfo();
+        final SimpleDateFormat sdf = new SimpleDateFormat("HH:mm:ss", Locale.getDefault());
+        setForegroundText("Running since " + sdf.format(new Date()));
 
-            SharedPreferences pref = getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
-            long callbackHandle = pref.getLong("callback_handle", 0);
+        SharedPreferences pref = getSharedPreferences("id.flutter.background_service", MODE_PRIVATE);
+        long callbackHandle = pref.getLong("callback_handle", 0);
 
-            FlutterInjector.instance().flutterLoader().ensureInitializationComplete(getApplicationContext(), null);
-            FlutterCallbackInformation callback = FlutterCallbackInformation.lookupCallbackInformation(callbackHandle);
-            if (callback == null) {
-                Log.e(TAG, "callback handle not found");
-                return;
-            }
-
-            isRunning.set(true);
-            backgroundEngine = new FlutterEngine(this);
-            backgroundEngine.getServiceControlSurface().attachToService(BackgroundService.this, null, isForegroundService(this));
-
-            methodChannel = new MethodChannel(backgroundEngine.getDartExecutor().getBinaryMessenger(), "id.flutter/background_service_bg", JSONMethodCodec.INSTANCE);
-            methodChannel.setMethodCallHandler(this);
-
-            dartCallback = new DartExecutor.DartCallback(getAssets(), FlutterInjector.instance().flutterLoader().findAppBundlePath(), callback);
-            backgroundEngine.getDartExecutor().executeDartCallback(dartCallback);
-        } catch (UnsatisfiedLinkError e) {
-            notificationContent = "Error " +e.getMessage();
-            updateNotificationInfo();
-
-            Log.w(TAG, "UnsatisfiedLinkError: After a reboot this may happen for a short period and it is ok to ignore then!" + e.getMessage());
-        }
-    }
-
-    public void receiveData(JSONObject data) {
-        if (methodChannel != null) {
-            try {
-                methodChannel.invokeMethod("onReceiveData", data);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-    @Override
-    public void onMethodCall(@NonNull MethodCall call, @NonNull MethodChannel.Result result) {
-        String method = call.method;
-
-        try {
-            if (method.equalsIgnoreCase("setNotificationInfo")) {
-                JSONObject arg = (JSONObject) call.arguments;
-                if (arg.has("title")) {
-                    notificationTitle = arg.getString("title");
-                    notificationContent = arg.getString("content");
-                    updateNotificationInfo();
-                    result.success(true);
-                    return;
-                }
-            }
-
-            if (method.equalsIgnoreCase("setAutoStartOnBootMode")) {
-                JSONObject arg = (JSONObject) call.arguments;
-                boolean value = arg.getBoolean("value");
-                setAutoStartOnBootMode(value);
-                result.success(true);
-                return;
-            }
-
-            if (method.equalsIgnoreCase("setForegroundMode")) {
-                JSONObject arg = (JSONObject) call.arguments;
-                boolean value = arg.getBoolean("value");
-                setForegroundServiceMode(value);
-                if (value) {
-                    updateNotificationInfo();
-                } else {
-                    stopForeground(true);
-                }
-
-                result.success(true);
-                return;
-            }
-
-            if (method.equalsIgnoreCase("stopService")) {
-                isManuallyStopped = true;
-                Intent intent = new Intent(this, WatchdogReceiver.class);
-                PendingIntent pi;
-                if (SDK_INT >= Build.VERSION_CODES.S) {
-                    pi = PendingIntent.getBroadcast(getApplicationContext(), 111, intent, PendingIntent.FLAG_CANCEL_CURRENT | PendingIntent.FLAG_MUTABLE);
-                } else {
-                    pi = PendingIntent.getBroadcast(getApplicationContext(), 111, intent, PendingIntent.FLAG_CANCEL_CURRENT);
-                }
-
-                AlarmManager alarmManager = (AlarmManager) getSystemService(ALARM_SERVICE);
-                alarmManager.cancel(pi);
-                stopSelf();
-                result.success(true);
-                return;
-            }
-
-            if (method.equalsIgnoreCase("sendData")) {
-                LocalBroadcastManager manager = LocalBroadcastManager.getInstance(this);
-                Intent intent = new Intent("id.flutter/background_service");
-                intent.putExtra("data", ((JSONObject) call.arguments).toString());
-                manager.sendBroadcast(intent);
-                result.success(true);
-                return;
-            }
-        } catch (JSONException e) {
-            Log.e(TAG, e.getMessage());
-            e.printStackTrace();
+        FlutterCallbackInformation callback =  FlutterCallbackInformation.lookupCallbackInformation(callbackHandle);
+        if (callback == null){
+            Log.e(TAG, "callback handle not found");
+            return;
         }
 
-        result.notImplemented();
+        isRunning.set(true);
+        FlutterEngine backgroundEngine = new FlutterEngine(this);
+        DartExecutor.DartCallback dartCallback = new DartExecutor.DartCallback(getAssets(), FlutterMain.findAppBundlePath(), callback);
+        backgroundEngine.getDartExecutor().executeDartCallback(dartCallback);
     }
 }

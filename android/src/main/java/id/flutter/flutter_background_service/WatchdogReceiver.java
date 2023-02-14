@@ -3,18 +3,15 @@ package id.flutter.flutter_background_service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-
-import androidx.core.content.ContextCompat;
+import android.os.Build;
 
 public class WatchdogReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
-        if(!BackgroundService.isManuallyStopped(context)){
-            if (BackgroundService.isForegroundService(context)){
-                ContextCompat.startForegroundService(context, new Intent(context, BackgroundService.class));
-            } else {
-                context.startService(new Intent(context, BackgroundService.class));
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(new Intent(context, BackgroundService.class));
+        } else {
+            context.startService(new Intent(context, BackgroundService.class));
         }
     }
 }
