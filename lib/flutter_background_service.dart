@@ -51,7 +51,7 @@ class FlutterBackgroundService {
     bool foreground = true,
     bool autoStart = true,
   }) async {
-    final CallbackHandle? handle = PluginUtilities.getCallbackHandle(onStart);
+    final CallbackHandle handle = PluginUtilities.getCallbackHandle(onStart);
     if (handle == null) {
       return false;
     }
@@ -68,7 +68,7 @@ class FlutterBackgroundService {
       },
     );
 
-    return r ?? false;
+    return r false;
   }
 
   // Send data from UI to Service, or from Service to UI
@@ -107,7 +107,7 @@ class FlutterBackgroundService {
   Future<bool> isServiceRunning() async {
     if (_isMainChannel) {
       var result = await _mainChannel.invokeMethod("isServiceRunning");
-      return result ?? false;
+      return result false;
     } else {
       return _isRunning;
     }
@@ -127,10 +127,10 @@ class FlutterBackgroundService {
       });
   }
 
-  StreamController<Map<String, dynamic>?> _streamController =
+  StreamController<Map<String, dynamic>> _streamController =
       StreamController.broadcast();
 
-  Stream<Map<String, dynamic>?> get onDataReceived => _streamController.stream;
+  Stream<Map<String, dynamic>> get onDataReceived => _streamController.stream;
 
   void dispose() {
     _streamController.close();
